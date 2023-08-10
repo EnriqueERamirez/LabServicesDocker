@@ -1,0 +1,149 @@
+version: '3.7'
+
+services:
+  nginx:
+    image: nginx:latest
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx:/etc/nginx/conf.d
+        #      - ./certbot/conf:/etc/letsencrypt
+        #      - ./certbot/www:/var/www/certbot
+    depends_on:
+      - gitlab
+      - rocketchat
+      - grafana
+      - openproject
+
+
+  gitlab:
+    image: gitlab/gitlab-ce:latest
+      #   hostname: gitlab.ieeuach.cl
+    shm_size: '2gb'
+    environment:
+      GITLAB_OMNIBUS_CONFIG: |
+        external_url 'http://gitlab.ieeuach.cl'
+        nginx['listen_port'] = 31080
+        nginx['listen_https'] = false
+        letsencrypt['enable'] = false
+        gitlab_rails['gitlab_shell_ssh_port'] = 31022
+        registry_external_url 'http://registry.ieeuach.cl'
+        registry_nginx['listen_https'] = false
+        registry_nginx['proxy_set_headers'] = {
+          "X-Forwarded-Proto" => "http",
+          "X-Forwarded-Ssl" => "on"
+        }
+    ports:
+      - '31080:31080'
+      - '31022:31022'
+    volumes:
+    - './gitlab/config:/etc/gitlab'
+    - './gitlab/logs:/var/log/gitlab'
+    - './gitlab/data:/var/opt/gitlab'
+  rocketchat:
+    image: registry.rocket.chat/rocketchat/rocket.chat:latest
+    restart: always
+    environment:
+      MONGO_URL: mongodb://mongodb:27017/rocketchat?replicaSet=rs0
+      MONGO_OPLOG_URL: mongodb://mongodb:27017/local?replicaSet=rs0
+      ROOT_URL: http://localhost:3000
+      PORT: 3000
+      DEPLOY_METHOD: docker
+    depends_on:
+      - mongodb
+
+  mongodb:
+    image: docker.io/bitnami/mongodb:5.0
+    restart: always
+    volumes:
+      - ./mongodb_data:/bitnami/mongodb
+    environment:
+      MONGODB_REPLICA_SET_MODE: primary
+      MONGODB_REPLICA_SET_NAME: rs0
+      MONGODB_PORT_NUMBER: 27017
+      MONGODB_INITIAL_PRIMARY_HOST: mongodb
+      MONGODB_INITIAL_PRIMARY_PORT_NUMBER: 27017
+      MONGODB_ADVERTISED_HOSTNAME: mongodb
+      MONGODB_ENABLE_JOURNAL: true
+      ALLOW_EMPTY_PASSWORD: yes
+
+  grafana:
+    image: grafana/grafana:latest
+    volumes:
+      - ./grafana/data:/var/lib/grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+  openproject:
+    image: openproject/community:10
+    environment:
+      OPENPROJECT_HTTPS: "false"
+      OPENPROJECT_HOST__NAME: "openproject.ieeuach.cl"
+      DATABASE_URL: postgres://postgres:password@db:5432/openproject
+    volumes:
+      - ./openproject/pgdata:/var/openproject/pgdata
+      - ./openproject/logs:/var/log/supervisor
+    ports:
+      - "8080:8080"
+    depends_on:
+      - db
+  db:
+    image: postgres:11
+    environment:
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: openproject
+    volumes:
+      - ./postgres-data:/var/lib/postgresql/data
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    ports:
+      - "9092:9092"
+
+  hadoop:
+    image: sequenceiq/hadoop-docker:2.7.1
+    ports:
+      - "50070:50070"
+  my_app:
+    image: apiuscada:latest
+    environment:
+      - APP_HOST=0.0.0.0
+      - APP_PORT=8085
+      - REDIS_HOST=redis-19767.c10.us-east-1-4.ec2.cloud.redislabs.com
+      - REDIS_USER=On
+      - REDIS_PASSWORD=SGdGHZDOBdynRcAgcbi0tSvJatvf3d5E
+      - REDIS_PORT=19767
+    ports:
+      - 8085:8085
+  telegraf:
+    image: telegraf
+    container_name: telegraf
+    restart: always
+    volumes:
+    - ./config/telegraf.conf:/etc/telegraf/telegraf.conf:ro
+    depends_on:
+      - influxdb
+    ports:
+    - '8125:8125'
+  influxdb:
+    image: influxdb:1.8-alpine
+    container_name: influxdb
+    restart: always
+    environment:
+      - INFLUXDB_DB=influx
+      - INFLUXDB_ADMIN_USER=admin
+      - INFLUXDB_ADMIN_PASSWORD=admin
+    ports:
+      - '8086:8086'
+    volumes:
+      - ./influxdb_data:/var/lib/influxdb
+  # certbot:
+  #   image: certbot/certbot:latest
+  #   volumes:
+  #     - ./certbot/conf:/etc/letsencrypt
+  #     - ./certbot/www:/var/www/certbot
+  #       #entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+  #   environment:
+  #     - EMAIL=enrique.ramirez@alumnos.uach.cl
+  #     - DOMAIN=yourdomain.com
+  #   entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot certonly --webroot -w /var/www/certbot -d $${DOMAIN} --email $${EMAIL} --agree-tos --no-eff-email --force-renewal; sleep 12h & wait $${!}; done;'"
