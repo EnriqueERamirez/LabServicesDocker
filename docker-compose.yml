@@ -44,12 +44,8 @@ services:
   rocketchat:
     image: registry.rocket.chat/rocketchat/rocket.chat:latest
     restart: always
-    environment:
-      MONGO_URL: mongodb://mongodb:27017/rocketchat?replicaSet=rs0
-      MONGO_OPLOG_URL: mongodb://mongodb:27017/local?replicaSet=rs0
-      ROOT_URL: http://localhost:3000
-      PORT: 3000
-      DEPLOY_METHOD: docker
+    env_file: 
+      - ./envs/rocketchat.env
     depends_on:
       - mongodb
 
@@ -57,83 +53,41 @@ services:
     image: docker.io/bitnami/mongodb:5.0
     restart: always
     volumes:
-      - ./mongodb_data:/bitnami/mongodb
-    environment:
-      MONGODB_REPLICA_SET_MODE: primary
-      MONGODB_REPLICA_SET_NAME: rs0
-      MONGODB_PORT_NUMBER: 27017
-      MONGODB_INITIAL_PRIMARY_HOST: mongodb
-      MONGODB_INITIAL_PRIMARY_PORT_NUMBER: 27017
-      MONGODB_ADVERTISED_HOSTNAME: mongodb
-      MONGODB_ENABLE_JOURNAL: true
-      ALLOW_EMPTY_PASSWORD: yes
-
+      - ./data/mongodb_data:/bitnami/mongodb
+    env_file: 
+      - ./envs/mongo.env
   grafana:
     image: grafana/grafana:latest
     volumes:
-      - ./grafana/data:/var/lib/grafana
-    environment:
-      GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: admin
+      - ./data/grafana/data:/var/lib/grafana
+    env_file: 
+      - ./envs/grafana.env
   openproject:
     image: openproject/community:10
-    environment:
-      OPENPROJECT_HTTPS: "false"
-      OPENPROJECT_HOST__NAME: "openproject.ieeuach.cl"
-      DATABASE_URL: postgres://postgres:password@db:5432/openproject
     volumes:
-      - ./openproject/pgdata:/var/openproject/pgdata
-      - ./openproject/logs:/var/log/supervisor
+      - ./data/openproject/pgdata:/var/openproject/pgdata
+      - ./data/openproject/logs:/var/log/supervisor
+    env_file: 
+      - ./envs/openproject.env
+
     ports:
       - "8080:8080"
     depends_on:
       - db
   db:
     image: postgres:11
-    environment:
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: openproject
     volumes:
       - ./postgres-data:/var/lib/postgresql/data
-  kafka:
-    image: confluentinc/cp-kafka:latest
-    ports:
-      - "9092:9092"
-
-  hadoop:
-    image: sequenceiq/hadoop-docker:2.7.1
-    ports:
-      - "50070:50070"
-  my_app:
-    image: apiuscada:latest
-    environment:
-      - APP_HOST=0.0.0.0
-      - APP_PORT=8085
-      - REDIS_HOST=redis-19767.c10.us-east-1-4.ec2.cloud.redislabs.com
-      - REDIS_USER=On
-      - REDIS_PASSWORD=SGdGHZDOBdynRcAgcbi0tSvJatvf3d5E
-      - REDIS_PORT=19767
-    ports:
-      - 8085:8085
-  telegraf:
-    image: telegraf
-    container_name: telegraf
-    restart: always
-    volumes:
-    - ./config/telegraf.conf:/etc/telegraf/telegraf.conf:ro
-    depends_on:
-      - influxdb
-    ports:
-    - '8125:8125'
+    env_file: 
+      - ./envs/postgres.env
   influxdb:
     image: influxdb:1.8-alpine
     container_name: influxdb
     restart: always
-    environment:
-      - INFLUXDB_DB=influx
-      - INFLUXDB_ADMIN_USER=admin
-      - INFLUXDB_ADMIN_PASSWORD=admin
     ports:
       - '8086:8086'
     volumes:
-      - ./influxdb_data:/var/lib/influxdb
+      - ./data/influxdb_data:/var/lib/influxdb
+    env_file: 
+      - ./envs/influxdb.env
+
